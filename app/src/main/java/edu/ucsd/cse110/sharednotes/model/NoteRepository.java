@@ -2,19 +2,33 @@ package edu.ucsd.cse110.sharednotes.model;
 
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MediatorLiveData;
+import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.Observer;
+
+import org.json.JSONObject;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
 
 public class NoteRepository {
     private final NoteDao dao;
+    private final NoteAPI api;
     private ScheduledFuture<?> poller; // what could this be for... hmm?
 
     public NoteRepository(NoteDao dao) {
         this.dao = dao;
+        this.api = NoteAPI.provide();
     }
 
     // Synced Methods
@@ -103,12 +117,29 @@ public class NoteRepository {
         // You may (but don't have to) want to cache the LiveData's for each title, so that
         // you don't create a new polling thread every time you call getRemote with the same title.
         // You don't need to worry about killing background threads.
+        NoteAPI noteAPI = new NoteAPI();
+        var executor = Executors.newSingleThreadScheduledExecutor();
 
-        throw new UnsupportedOperationException("Not implemented yet");
+        MutableLiveData<Note> fromRemote = new MutableLiveData<>();
+        var future = executor.submit(() -> fromRemote.setValue(noteAPI.pullFromRemote(title).getValue()));
+        //copied this from lab 4 threading i guess
+        //here it says you need to not be on main thread
+
+        //unsure how to do the scheduledexecutorservice thread that polls every 3 seconds
+        final MediatorLiveData<Note> ans = new MediatorLiveData<>();
+        ans.addSource(fromRemote, ans::postValue);//not sure what to do here to add data source
+
+        ScheduledFuture<?> clockFuture = executor.scheduleAtFixedRate(() -> {//sus
+            fromRemote.postValue(noteAPI.pullFromRemote(title).getValue());//this should set the liveData for the answer ans??, maybe need to swap variables
+//says cannot invoke setValue on a background thread
+        }, 0, 3000, TimeUnit.MILLISECONDS);
+
+        return ans;
+
     }
 
     public void upsertRemote(Note note) {
         // TODO: Implement upsertRemote!
-        throw new UnsupportedOperationException("Not implemented yet");
+        api.putNote(note);
     }
 }
